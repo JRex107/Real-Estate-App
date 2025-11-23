@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Estate Agent Listings</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="brand-bar">
+    <div class="brand">Horizon Estates</div>
+    <div class="brand-controls">
+      <span class="pill">Buy &amp; Rent SaaS</span>
+      <button id="toggleTheme" aria-label="Toggle theme">Toggle theme</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="controls" aria-label="Property filters">
+      <div class="filter-group">
+        <label for="searchInput">Search by location or keyword</label>
+        <input id="searchInput" type="search" placeholder="e.g. London, garden, skyline" />
+      </div>
+      <div class="filter-row">
+        <div class="filter-group">
+          <label for="minPrice">Min price (£)</label>
+          <input id="minPrice" type="number" min="0" step="5000" />
+        </div>
+        <div class="filter-group">
+          <label for="maxPrice">Max price (£)</label>
+          <input id="maxPrice" type="number" min="0" step="5000" />
+        </div>
+        <div class="filter-group">
+          <label for="bedrooms">Bedrooms</label>
+          <select id="bedrooms">
+            <option value="">Any</option>
+            <option value="1">1+</option>
+            <option value="2">2+</option>
+            <option value="3">3+</option>
+            <option value="4">4+</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <span>Listing type</span>
+          <div class="pill-group" role="group" aria-label="Listing type">
+            <button class="pill active" data-type="all">All</button>
+            <button class="pill" data-type="buy">Buy</button>
+            <button class="pill" data-type="rent">Rent</button>
+          </div>
+        </div>
+        <div class="filter-group view-toggle">
+          <span>View</span>
+          <div class="pill-group" role="group" aria-label="View switcher">
+            <button class="pill active" data-view="list">List</button>
+            <button class="pill" data-view="map">Map</button>
+            <button class="pill" data-view="split">Split</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="content">
+      <div id="listView" class="panel">
+        <ul id="propertyList" class="property-list" aria-live="polite"></ul>
+      </div>
+      <div id="mapView" class="panel">
+        <div id="map" role="application" aria-label="Property map"></div>
+      </div>
+    </section>
+  </main>
+
+  <template id="propertyCardTemplate">
+    <li class="property-card">
+      <div class="property-header">
+        <div class="pill property-type"></div>
+        <div class="price"></div>
+      </div>
+      <div class="property-body">
+        <h3 class="title"></h3>
+        <p class="location"></p>
+        <p class="details"></p>
+        <p class="description"></p>
+      </div>
+    </li>
+  </template>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script src="app.js"></script>
+</body>
+</html>
