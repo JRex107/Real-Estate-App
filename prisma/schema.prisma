@@ -1,0 +1,420 @@
+// Prisma schema for Property Listing SaaS
+// Multi-tenant architecture with Agency-based isolation
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER & AUTHENTICATION
+// ============================================================================
+
+enum UserRole {
+  PLATFORM_ADMIN // SaaS owner - manages all agencies
+  AGENCY_ADMIN   // Agency owner/manager - manages their agency
+  AGENT          // Agency staff - manages properties/enquiries
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  emailVerified  DateTime?
+  passwordHash   String?   // For email/password auth
+  name           String?
+  image          String?
+  role           UserRole  @default(AGENT)
+
+  // Multi-tenant: user belongs to one agency (null for PLATFORM_ADMIN)
+  agencyId       String?
+  agency         Agency?   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  // NextAuth relations
+  accounts       Account[]
+  sessions       Session[]
+
+  // Audit fields
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  lastLoginAt    DateTime?
+  isActive       Boolean   @default(true)
+
+  @@index([agencyId])
+  @@index([email])
+}
+
+// NextAuth.js required models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================================================
+// AGENCY (TENANT)
+// ============================================================================
+
+enum AgencyStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_SETUP
+}
+
+model Agency {
+  id               String       @id @default(cuid())
+  name             String
+  slug             String       @unique // URL-friendly identifier for routing
+  status           AgencyStatus @default(PENDING_SETUP)
+
+  // Contact Information
+  email            String
+  phone            String?
+  website          String?
+
+  // Address
+  addressLine1     String?
+  addressLine2     String?
+  city             String?
+  county           String?
+  postcode         String?
+  country          String       @default("United Kingdom")
+
+  // Branding / White-label Settings
+  logoUrl          String?
+  heroImageUrl     String?
+  primaryColor     String       @default("#2563eb")   // Blue
+  secondaryColor   String       @default("#1e40af")   // Darker blue
+  accentColor      String       @default("#f59e0b")   // Amber
+
+  // Plan & Limits (for future Stripe integration)
+  planTier         String       @default("free")     // free, starter, professional, enterprise
+  maxProperties    Int          @default(10)
+  maxUsers         Int          @default(3)
+
+  // Feature flags (JSON for flexibility)
+  features         Json         @default("{}")
+
+  // Relations
+  users            User[]
+  properties       Property[]
+  enquiries        Enquiry[]
+  officeLocations  OfficeLocation[]
+
+  // Audit fields
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Future: Custom domain support
+  // customDomain     String?      @unique
+
+  @@index([slug])
+  @@index([status])
+}
+
+model OfficeLocation {
+  id           String   @id @default(cuid())
+  agencyId     String
+  agency       Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  name         String   // e.g., "Head Office", "City Branch"
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  county       String?
+  postcode     String
+  country      String   @default("United Kingdom")
+
+  phone        String?
+  email        String?
+
+  latitude     Float?
+  longitude    Float?
+
+  isHeadOffice Boolean  @default(false)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([agencyId])
+}
+
+// ============================================================================
+// PROPERTY
+// ============================================================================
+
+enum PropertyStatus {
+  FOR_SALE
+  TO_RENT
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  UNDER_OFFER
+  SOLD
+  LET_AGREED
+  WITHDRAWN
+}
+
+enum PropertyType {
+  HOUSE
+  FLAT
+  APARTMENT
+  BUNGALOW
+  COTTAGE
+  MAISONETTE
+  STUDIO
+  TERRACED
+  SEMI_DETACHED
+  DETACHED
+  END_TERRACE
+  TOWNHOUSE
+  LAND
+  COMMERCIAL
+  OTHER
+}
+
+enum Tenure {
+  FREEHOLD
+  LEASEHOLD
+  SHARE_OF_FREEHOLD
+  COMMONHOLD
+  NOT_SPECIFIED
+}
+
+enum FurnishedStatus {
+  FURNISHED
+  PART_FURNISHED
+  UNFURNISHED
+  NOT_SPECIFIED
+}
+
+enum PriceType {
+  FIXED           // Fixed price
+  OFFERS_OVER     // Offers over X
+  OFFERS_REGION   // Offers in the region of
+  POA             // Price on application
+  PCM             // Per calendar month (rentals)
+  PW              // Per week (rentals)
+  PA              // Per annum (rentals)
+}
+
+enum EpcRating {
+  A
+  B
+  C
+  D
+  E
+  F
+  G
+  NOT_SPECIFIED
+}
+
+model Property {
+  id                 String             @id @default(cuid())
+
+  // Multi-tenant: property belongs to one agency
+  agencyId           String
+  agency             Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  // Status
+  status             PropertyStatus     @default(FOR_SALE)
+  availabilityStatus AvailabilityStatus @default(AVAILABLE)
+  isPublished        Boolean            @default(false)
+  isFeatured         Boolean            @default(false)
+
+  // Basic Info
+  title              String
+  slug               String             // URL-friendly, unique within agency
+  description        String             @db.Text
+
+  // Address
+  addressLine1       String
+  addressLine2       String?
+  city               String
+  county             String?
+  postcode           String
+  country            String             @default("United Kingdom")
+
+  // Geolocation (for map display)
+  latitude           Float
+  longitude          Float
+
+  // Price
+  price              Decimal            @db.Decimal(12, 2)
+  priceType          PriceType          @default(FIXED)
+
+  // Property Details
+  propertyType       PropertyType       @default(HOUSE)
+  bedrooms           Int                @default(0)
+  bathrooms          Int                @default(0)
+  receptions         Int                @default(0) // Reception rooms / living rooms
+  tenure             Tenure             @default(NOT_SPECIFIED)
+  furnishedStatus    FurnishedStatus    @default(NOT_SPECIFIED)
+
+  // Size
+  floorAreaSqFt      Int?               // Internal floor area in sq ft
+  floorAreaSqM       Float?             // Internal floor area in sq m
+  plotSizeSqFt       Int?               // Plot/land size for houses
+
+  // EPC & Energy
+  epcRating          EpcRating          @default(NOT_SPECIFIED)
+  councilTaxBand     String?            // A-H in UK
+
+  // Additional Info
+  yearBuilt          Int?
+  parkingSpaces      Int                @default(0)
+  hasGarden          Boolean            @default(false)
+  hasGarage          Boolean            @default(false)
+  hasParking         Boolean            @default(false)
+  hasCentralHeating  Boolean            @default(false)
+  hasDoubleGlazing   Boolean            @default(false)
+  petsAllowed        Boolean?           // For rentals
+
+  // Virtual Tour / Video
+  virtualTourUrl     String?
+  videoUrl           String?
+
+  // Key Features (array stored as JSON)
+  keyFeatures        Json               @default("[]") // Array of feature strings
+
+  // Relations
+  images             PropertyImage[]
+  enquiries          Enquiry[]
+
+  // Audit fields
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  publishedAt        DateTime?
+
+  // Unique constraint: slug is unique within an agency
+  @@unique([agencyId, slug])
+  @@index([agencyId])
+  @@index([status])
+  @@index([availabilityStatus])
+  @@index([isPublished])
+  @@index([propertyType])
+  @@index([price])
+  @@index([bedrooms])
+  @@index([city])
+  @@index([postcode])
+}
+
+model PropertyImage {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  url         String
+  altText     String?
+  caption     String?
+  sortOrder   Int      @default(0)
+  isPrimary   Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([propertyId])
+  @@index([sortOrder])
+}
+
+// ============================================================================
+// ENQUIRY
+// ============================================================================
+
+enum EnquiryStatus {
+  NEW
+  IN_PROGRESS
+  RESPONDED
+  CLOSED
+}
+
+model Enquiry {
+  id          String        @id @default(cuid())
+
+  // Relations
+  propertyId  String
+  property    Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  agencyId    String
+  agency      Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  // Enquirer details
+  name        String
+  email       String
+  phone       String?
+  message     String        @db.Text
+
+  // Status & workflow
+  status      EnquiryStatus @default(NEW)
+  internalNotes String?     @db.Text // For agent notes
+
+  // Tracking
+  source      String?       // Where the enquiry came from (website, portal, etc.)
+
+  // Audit fields
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  respondedAt DateTime?
+  closedAt    DateTime?
+
+  @@index([propertyId])
+  @@index([agencyId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// PLATFORM SETTINGS (for future expansion)
+// ============================================================================
+
+model PlatformSettings {
+  id                String   @id @default("platform_settings")
+
+  // Global branding
+  platformName      String   @default("PropertyHub")
+  supportEmail      String   @default("support@propertyhub.com")
+
+  // Feature flags
+  enableSignups     Boolean  @default(true)
+  maintenanceMode   Boolean  @default(false)
+
+  // Plan configurations (JSON)
+  planConfigs       Json     @default("{}")
+
+  updatedAt         DateTime @updatedAt
+}
